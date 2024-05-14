@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import pdb, os, argparse
-from scipy import misc
 import time
 import imageio
 from model.SAFINet import SAFINet
@@ -16,7 +15,7 @@ opt = parser.parse_args()
 dataset_path = './datasets/'
 
 model = SAFINet()
-model.load_state_dict(torch.load('./models/SAFINet/SAFINet_ORSSD.pth.2'))
+model.load_state_dict(torch.load('./models/SAFINet/SAFINet_ORSSD.pth'))
 
 model.cuda()
 model.eval()
