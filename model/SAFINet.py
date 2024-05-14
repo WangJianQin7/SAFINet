@@ -262,8 +262,8 @@ class FRAF(nn.Module):
         x_ca = self.ca(x_conv) * x_conv
 
         if fb_sa is not None:
-            x_sa_st = self.sa_no_sig(x_ca)
-            A_sa = self.sigmoid(self.SpatialCorrelation(x_sa_st, fb_sa))
+            A_sa_st = self.sa_no_sig(x_ca)
+            A_sa = self.sigmoid(self.SpatialCorrelation(A_sa_st, fb_sa))
         else:
             A_sa = self.sa(x_ca)
 
@@ -298,17 +298,17 @@ class FRAF2(nn.Module):
         x_conv = self.bconv(x)
         x_ca = self.ca(x_conv) * x_conv
 
-        x_sa_n = self.sa_no_sig(x_ca)
+        A_fbsa = self.sa_no_sig(x_ca)
 
-        x_sa = self.sigmoid(x_sa_n)
+        A_sa = self.sigmoid(A_fbsa)
 
-        x_fg = self.FG_conv(x_sa * x_ca)
+        x_fg = self.FG_conv(A_sa * x_ca)
 
-        x_bg = self.BG_conv((1 - x_sa) * x_ca)
+        x_bg = self.BG_conv((1 - A_sa) * x_ca)
 
         x_fraf = self.FBG_conv(torch.cat((x_fg, x_bg), 1)) + x
 
-        return x_fraf, x_sa_n
+        return x_fraf, A_fbsa
 
 
 class SAFINet(nn.Module):
@@ -396,8 +396,8 @@ class SAFINet(nn.Module):
 
         x1_1 = torch.cat((s1, self.upsample21(x2_fraf)), 1)
         x1_1 = self.compress1(x1_1)
-        x1_m = self.maf1(x1_1)
-        x1_fraf = self.fraf1(x1_m)
+        x1_maf = self.maf1(x1_1)
+        x1_fraf = self.fraf1(x1_maf)
 
         sal_out = self.s_conv1(x1_fraf)
         x2_out = self.s_conv2(x2_fraf)
