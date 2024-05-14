@@ -188,22 +188,22 @@ class MAF(nn.Module):
 
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, x):
-        x_mix0 = self.branch0(x)
-        x_fuse0 = self.sigmoid(self.conv0(x_mix0)) * x_mix0
+    def forward(self, x_in):
+        x0 = self.branch0(x_in)
+        x_0 = self.sigmoid(self.conv0(x0)) * x0
 
-        x_mix1 = self.branch1(x + x_mix0)
-        x_fuse1 = self.sigmoid(self.conv1(x_mix1)) * x_mix1
+        x1 = self.branch1(x_in + x0)
+        x_1 = self.sigmoid(self.conv1(x1)) * x1
 
-        x_mix2 = self.branch2(x + x_mix0 + x_mix1)
-        x_fuse2 = self.sigmoid(self.conv2(x_mix2)) * x_mix2
+        x2 = self.branch2(x_in + x0 + x1)
+        x_2 = self.sigmoid(self.conv2(x2)) * x2
 
-        x_mix3 = self.branch3(x + x_mix0 + x_mix1 + x_mix2)
-        x_fuse3 = self.sigmoid(self.conv3(x_mix3)) * x_mix3
+        x3 = self.branch3(x_in + x0 + x1 + x2)
+        x_3 = self.sigmoid(self.conv3(x3)) * x3
 
-        x_ms = self.compress(torch.cat((x_fuse0, x_fuse1, x_fuse2, x_fuse3), 1)) + x
+        x_maf = self.compress(torch.cat((x_0, x_1, x_2, x_3), 1)) + x_in
 
-        return x_ms
+        return x_maf
 
 
 class SCorrM(nn.Module):
@@ -218,21 +218,21 @@ class SCorrM(nn.Module):
         self.conv2 = nn.Conv2d(channel, channel, 1, bias=False)
 
     def forward(self, sa, fb_sa):
-        samap = F.interpolate(fb_sa, size=sa.size()[2:], mode='bilinear', align_corners=True)
-        samap = self.smooth(samap)
+        fb_sa1 = F.interpolate(fb_sa, size=sa.size()[2:], mode='bilinear', align_corners=True)
+        fb_sa1 = self.smooth(fb_sa1)
 
-        Q = sa * samap
-        Q1 = F.softmax(Q, dim=0)
+        W = sa * fb_sa1
+        W_sa = F.softmax(W, dim=0)
 
-        sa_1 = sa * Q1
-        samap_1 = samap * Q1
+        sa_1 = sa * W_sa
+        fb_sa2 = fb_sa1 * W_sa
 
-        sa_out = self.conv1(sa_1 + samap)
-        samap_out = self.conv2(samap_1 + samap)
+        sa_2 = self.conv1(sa_1 + fb_sa1)
+        fb_sa3 = self.conv2(fb_sa2 + fb_sa1)
 
-        out = sa_out + samap_out
+        A_scorr = sa_2 + fb_sa3
 
-        return out
+        return A_scorr
 
 
 class FRAF(nn.Module):
@@ -258,22 +258,22 @@ class FRAF(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, fb_sa=None):
-        x1 = self.bconv(x)
-        x_ca = self.ca(x1) * x1
+        x_conv = self.bconv(x)
+        x_ca = self.ca(x_conv) * x_conv
 
         if fb_sa is not None:
             x_sa_st = self.sa_no_sig(x_ca)
-            x_sa = self.sigmoid(self.SpatialCorrelation(x_sa_st, fb_sa))
+            A_sa = self.sigmoid(self.SpatialCorrelation(x_sa_st, fb_sa))
         else:
-            x_sa = self.sa(x_ca)
+            A_sa = self.sa(x_ca)
 
-        x_fg = self.FG_conv(x_sa * x_ca)
+        x_fg = self.FG_conv(A_sa * x_ca)
 
-        x_bg = self.BG_conv((1 - x_sa) * x_ca)
+        x_bg = self.BG_conv((1 - A_sa) * x_ca)
 
-        x_out = self.FBG_conv(torch.cat((x_fg, x_bg), 1)) + x
+        x_fraf = self.FBG_conv(torch.cat((x_fg, x_bg), 1)) + x
 
-        return x_out
+        return x_fraf
 
 
 class FRAF2(nn.Module):
@@ -295,8 +295,8 @@ class FRAF2(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        x1 = self.bconv(x)
-        x_ca = self.ca(x1) * x1
+        x_conv = self.bconv(x)
+        x_ca = self.ca(x_conv) * x_conv
 
         x_sa_n = self.sa_no_sig(x_ca)
 
@@ -306,9 +306,9 @@ class FRAF2(nn.Module):
 
         x_bg = self.BG_conv((1 - x_sa) * x_ca)
 
-        x_out = self.FBG_conv(torch.cat((x_fg, x_bg), 1)) + x
+        x_fraf = self.FBG_conv(torch.cat((x_fg, x_bg), 1)) + x
 
-        return x_out, x_sa_n
+        return x_fraf, x_sa_n
 
 
 class SAFINet(nn.Module):
@@ -355,55 +355,55 @@ class SAFINet(nn.Module):
 
     def forward(self, x):
         size = x.size()[2:]
-        x1, x2, x3, x4, x5 = self.encoder(x)
+        f1, f2, f3, f4, f5 = self.encoder(x)
 
-        x1 = self.Translayer1(x1)
-        x2 = self.Translayer2(x2)
-        x3 = self.Translayer3(x3)
-        x4 = self.Translayer4(x4)
-        x5 = self.Translayer5(x5)
+        s1 = self.Translayer1(f1)
+        s2 = self.Translayer2(f2)
+        s3 = self.Translayer3(f3)
+        s4 = self.Translayer4(f4)
+        s5 = self.Translayer5(f5)
 
-        x2_sa = None
-        x2_d = x3_d = x4_d = x5_d = None
+        fb_sa = None
+        x2_fraf = x3_fraf = x4_fraf = x5_fraf = None
 
         for cycle in range(3):
-            x5_m = self.maf5(x5)
-            if x2_sa is not None:
-                x5_d = self.fraf5(x5_m, x2_sa)
+            x5_maf = self.maf5(s5)
+            if fb_sa is not None:
+                x5_fraf = self.fraf5(x5_maf, fb_sa)
             else:
-                x5_d = self.fraf5(x5_m)
+                x5_fraf = self.fraf5(x5_maf)
 
-            x4_1 = torch.cat((x4, self.upsample24(x5_d)), 1)
+            x4_1 = torch.cat((s4, self.upsample24(x5_fraf)), 1)
             x4_1 = self.compress4(x4_1)
-            x4_m = self.maf4(x4_1)
+            x4_maf = self.maf4(x4_1)
             if cycle > 0:
-                x4_d = self.fraf4(x4_m, x2_sa)
+                x4_fraf = self.fraf4(x4_maf, fb_sa)
             else:
-                x4_d = self.fraf4(x4_m)
+                x4_fraf = self.fraf4(x4_maf)
 
-            x3_1 = torch.cat((x3, self.upsample23(x4_d)), 1)
+            x3_1 = torch.cat((s3, self.upsample23(x4_fraf)), 1)
             x3_1 = self.compress3(x3_1)
-            x3_m = self.maf3(x3_1)
+            x3_maf = self.maf3(x3_1)
             if cycle > 0:
-                x3_d = self.fraf3(x3_m, x2_sa)
+                x3_fraf = self.fraf3(x3_maf, fb_sa)
             else:
-                x3_d = self.fraf3(x3_m)
+                x3_fraf = self.fraf3(x3_maf)
 
-            x2_1 = torch.cat((x2, self.upsample22(x3_d)), 1)
+            x2_1 = torch.cat((s2, self.upsample22(x3_fraf)), 1)
             x2_1 = self.compress2(x2_1)
-            x2_m = self.maf2(x2_1)
-            x2_d, x2_sa = self.fraf2(x2_m)
+            x2_maf = self.maf2(x2_1)
+            x2_fraf, fb_sa = self.fraf2(x2_maf)
 
-        x1_1 = torch.cat((x1, self.upsample21(x2_d)), 1)
+        x1_1 = torch.cat((s1, self.upsample21(x2_fraf)), 1)
         x1_1 = self.compress1(x1_1)
         x1_m = self.maf1(x1_1)
-        x1_d = self.fraf1(x1_m)
+        x1_fraf = self.fraf1(x1_m)
 
-        sal_out = self.s_conv1(x1_d)
-        x2_out = self.s_conv2(x2_d)
-        x3_out = self.s_conv3(x3_d)
-        x4_out = self.s_conv4(x4_d)
-        x5_out = self.s_conv5(x5_d)
+        sal_out = self.s_conv1(x1_fraf)
+        x2_out = self.s_conv2(x2_fraf)
+        x3_out = self.s_conv3(x3_fraf)
+        x4_out = self.s_conv4(x4_fraf)
+        x5_out = self.s_conv5(x5_fraf)
 
         sal_out = F.interpolate(sal_out, size=size, mode='bilinear', align_corners=True)
         x2_out = F.interpolate(x2_out, size=size, mode='bilinear', align_corners=True)
